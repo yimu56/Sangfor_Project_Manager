@@ -1,0 +1,18 @@
+# 编译产物
+项目管理.exe
+sangfor-pm
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 运行期生成
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# 备份 / 导出
+backups/
+*.xlsx
+*.pdf
