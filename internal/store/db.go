@@ -32,21 +32,44 @@ func DataDir() string {
 		}
 		return filepath.Join(base, "SangforPM")
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".sangfor-pm")
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".sangfor-pm")
+	}
+	// 极端情况：容器 / systemd 里没有 HOME，退回 XDG 或当前目录
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		return filepath.Join(xdg, "sangfor-pm")
+	}
+	return filepath.Join(".", ".sangfor-pm")
 }
 
-func Open() (*Store, error) {
-	dir := DataDir()
+// Open 使用默认数据目录打开数据库。
+func Open() (*Store, error) { return OpenAt("") }
+
+// OpenAt 打开指定目录的数据库；dir 为空时使用 DataDir()。
+func OpenAt(dir string) (*Store, error) {
+	if strings.TrimSpace(dir) == "" {
+		dir = DataDir()
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
 	s := &Store{
 		DataDir: dir,
 		Files:   filepath.Join(dir, "files"),
 		Backups: filepath.Join(dir, "backups"),
 	}
-	for _, d := range []string{dir, s.Files, s.Backups, filepath.Join(s.Files, "tmp")} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+	// 数据库里有明文设备密码，非 Windows 下把数据目录收成仅本人可读。
+	dirMode := os.FileMode(0o755)
+	if runtime.GOOS != "windows" {
+		dirMode = 0o700
+	}
+	for _, d := range []string{dir, s.Files, s.Backups, filepath.Join(s.Files, "tmp"), filepath.Join(dir, "tmp")} {
+		if err := os.MkdirAll(d, dirMode); err != nil {
 			return nil, err
 		}
+	}
+	if runtime.GOOS != "windows" {
+		_ = os.Chmod(dir, dirMode)
 	}
 	dsn := "file:" + filepath.ToSlash(filepath.Join(dir, "data.db")) +
 		"?_pragma=busy_timeout(8000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"
@@ -63,6 +86,14 @@ func Open() (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// Close 关闭数据库连接（用于优雅退出）。
+func (s *Store) Close() error {
+	if s == nil || s.DB == nil {
+		return nil
+	}
+	return s.DB.Close()
 }
 
 func (s *Store) seed() error {

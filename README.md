@@ -77,10 +77,10 @@ BS 架构，Go 单二进制 + 内嵌前端，双击即用，数据全部留在�
 | 存储 | SQLite（`modernc.org/sqlite`） | **纯 Go 实现，`CGO_ENABLED=0`**，Windows / Linux 同一份代码交叉编译 |
 | 前端 | 原生 JS + 手写 CSS | 无构建步骤、无 npm 依赖，`embed` 打进二进制 |
 | Excel | `github.com/xuri/excelize/v2` | 多 sheet、表头样式、冻结窗格、自动筛选 |
-| PDF | `github.com/signintech/gopdf` | 运行时探测系统中文字体，输出 Type0 / Identity-H + 内嵌 FontFile2 |
+| PDF | `github.com/signintech/gopdf` | 运行时探测系统中文字体（会把 `.ttc` 拆成单字体、校验 cmap 覆盖中文），输出 Type0 / Identity-H + 内嵌 FontFile2 |
 | 认证 | 标准库 PBKDF2-HMAC-SHA256 | 12 万次迭代，内存会话 Cookie |
 
-代码量：Go ≈ 4.9k 行，前端 ≈ 2.8k 行，共 25 张表，37 个界面。
+代码量：Go ≈ 5.3k 行，前端 ≈ 2.6k 行，共 25 张表，37 个界面。
 
 ---
 
@@ -107,18 +107,26 @@ BS 架构，Go 单二进制 + 内嵌前端，双击即用，数据全部留在�
 
 ### Linux / macOS
 
+要求 Go **1.26+**；全程 `CGO_ENABLED=0`，不需要 C 编译器、不需要 Node。
+
 ```bash
-chmod +x build.sh
-./build.sh                    # 生成 sangfor-pm（默认 linux/amd64）
-./sangfor-pm                  # 本机使用，自动开浏览器
-./sangfor-pm -no-open -host 0.0.0.0   # 服务器部署，不开浏览器
+bash build.sh                                   # 生成 ./sangfor-pm（按当前系统/架构）
+bash start.sh                                   # 没编译会先编译；无桌面自动加 -no-open
+./sangfor-pm                                    # 桌面环境：自动打开浏览器
+./sangfor-pm -no-open -host 0.0.0.0 -port 8787  # 服务器：不开浏览器
 ```
+
+服务器部署（systemd、防火墙、中文字体、时区、冒烟测试）见 **[docs/linux-deploy.md](docs/linux-deploy.md)**。
+已在 Debian 13 x86_64（systemd）实测：PDF 中文导出、附件下载、含附件备份、优雅退出均通过。
 
 交叉编译到其他架构：
 
 ```bash
-GOOS=linux GOARCH=arm64 OUT=sangfor-pm-arm64 ./build.sh
+GOOS=linux GOARCH=arm64 OUT=dist/sangfor-pm-linux-arm64 bash build.sh
 ```
+
+> `./build.sh` 提示 `Permission denied` 时用 `bash build.sh`；
+> 提示 `$'\r': command not found` 说明文件被转成了 CRLF，执行 `sed -i 's/\r$//' build.sh`。
 
 ### 命令行参数
 
@@ -127,6 +135,7 @@ GOOS=linux GOARCH=arm64 OUT=sangfor-pm-arm64 ./build.sh
 | `-host` | `0.0.0.0` | 监听地址。`0.0.0.0` 允许局域网访问，`127.0.0.1` 仅本机 |
 | `-port` | `8787` | 端口被占用时自动向后顺延，最多尝试 20 个 |
 | `-no-open` | `false` | 启动后不自动打开浏览器（适合服务器 / 开机自启） |
+| `-data` | 空 | 指定数据目录；留空用默认目录。优先级高于 `PM_DATA_DIR` |
 
 ### 首次使用
 
@@ -166,7 +175,11 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 |---|---|
 | Windows | `%APPDATA%\SangforPM` |
 | Linux / macOS | `~/.sangfor-pm` |
-| 覆盖（测试 / 运维） | 环境变量 `PM_DATA_DIR` |
+| 命令行覆盖 | `-data /var/lib/sangfor-pm` |
+| 环境变量覆盖 | `PM_DATA_DIR` |
+
+> 非 Windows 平台启动时会把数据目录权限收紧为 `0700`（库内含明文设备密码）。
+> 服务器建议 `-data /var/lib/sangfor-pm` 并由 systemd 托管，见 [docs/linux-deploy.md](docs/linux-deploy.md)。
 
 ```
 <数据目录>/
@@ -195,12 +208,15 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 
 ```
 .
-├─ main.go                      启动入口：固定数据目录、端口顺延、局域网地址打印、自动开浏览器
+├─ main.go                      启动入口：数据目录、端口顺延、局域网地址、优雅退出、自动开浏览器
+├─ build.sh                     Linux / macOS / 交叉编译脚本（CGO_ENABLED=0）
+├─ start.sh                     一键启动（无二进制先编译；无桌面自动 -no-open）
 ├─ internal/
 │  ├─ store/
 │  │  ├─ schema.go              25 张表的建表 SQL（幂等）
-│  │  └─ db.go                  连接、种子数据、通用 CRUD（白名单列，防注入）
+│  │  └─ db.go                  连接、数据目录、种子数据、通用 CRUD（白名单列，防注入）
 │  ├─ auth/auth.go              PBKDF2 口令哈希 + 内存会话 + 重置令牌
+│  ├─ fonts/                    跨平台中文字体查找 + TTC 拆包 + cmap 中文校验
 │  └─ httpapi/
 │     ├─ server.go              路由表、中间件、登录限流
 │     ├─ handlers_auth.go       初始化 / 登录 / 改密 / 重置 / 系统设置
@@ -210,6 +226,9 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 │     ├─ handlers_dashboard.go  看板、提醒引擎、全局搜索、元数据
 │     ├─ handlers_export.go     Excel 六表 + PDF 四模板
 │     └─ handlers_backup.go     zip 备份、清理、定时调度、批量改状态
+├─ deploy/sangfor-pm.service    systemd unit 模板（Linux）
+├─ docs/linux-deploy.md         Linux 部署 / 字体 / systemd / 防火墙 / 排错
+├─ scripts/linux-smoke-test.sh  Linux 冒烟测试（临时数据目录，跑完整流程）
 └─ web/                         内嵌前端（无构建）
    ├─ index.html
    ├─ css/app.css               设计系统（浅色 / 深色双主题）
@@ -290,13 +309,21 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 先确认控制台打印的局域网地址与自己的网段一致，再放行防火墙（见上文）。虚拟机 / VPN 网卡的地址通常不可用。
 
 **导出 PDF 报「未找到可用中文字体」（Linux）**
-安装任一 CJK 字体（如 `fonts-noto-cjk`），或用环境变量指定：
+PDF 库只支持 **TrueType（glyf）** 字体。`.ttc` 会被自动拆成单字体后加载，
+但 **Noto Sans CJK / 思源黑体的 `.ttc` / `.otf` 是 CFF 轮廓，不能用于本项目的 PDF 导出**。
+推荐安装（任选其一）：
 
 ```bash
-PM_PDF_FONT=/usr/share/fonts/truetype/xxx/xxx.ttf ./sangfor-pm
+sudo apt install fonts-wqy-zenhei fonts-wqy-microhei
+sudo apt install fonts-arphic-uming fonts-droid-fallback
+# 或手动指定任意 TrueType 中文字体
+PM_PDF_FONT=/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc ./sangfor-pm
 ```
 
-Windows 下会自动使用 `simhei.ttf`，无需配置。
+程序会解析 cmap 校验字体确实包含「中」「文」，不会误选 DejaVu 这类无中文字形的字体；
+选中的字体路径会打印在日志里。详见 [docs/linux-deploy.md](docs/linux-deploy.md#6-中文字体pdf-导出必需)。
+
+Windows 下优先使用 `simhei.ttf` / `msyh.ttc`，通常无需配置。
 
 **忘记密码**
 登录页「忘记密码」→ 在**运行服务的本机**生成令牌 → 输入令牌与新密码。
