@@ -1,6 +1,8 @@
 # 编译产物
 项目管理.exe
 sangfor-pm
+sangfor-pm-*
+dist/
 *.exe
 *.dll
 *.so

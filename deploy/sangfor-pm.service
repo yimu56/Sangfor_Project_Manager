@@ -1,0 +1,34 @@
+[Unit]
+Description=Sangfor Project Manager (项目管理)
+Documentation=file:///opt/sangfor-pm/docs/linux-deploy.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sangfor
+Group=sangfor
+WorkingDirectory=/opt/sangfor-pm
+ExecStart=/opt/sangfor-pm/sangfor-pm -no-open -host 0.0.0.0 -port 8787 -data /var/lib/sangfor-pm
+Environment=TZ=Asia/Shanghai
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+
+# 加固（不需要可整段删除）
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+# AF_NETLINK 是必需的：程序用它枚举网卡、打印“局域网访问”地址；
+# 去掉后仍能启动，但控制台不会显示可用的局域网地址。
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/sangfor-pm
+
+[Install]
+WantedBy=multi-user.target

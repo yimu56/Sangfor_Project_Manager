@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/signintech/gopdf"
 	"github.com/xuri/excelize/v2"
 
+	"sangforpm/internal/fonts"
 	"sangforpm/internal/store"
 )
 
@@ -368,43 +368,28 @@ func (s *Server) hExportLogs(w http.ResponseWriter, r *http.Request) {
 
 // ---------- PDF ----------
 
-func findCJKFont() string {
-	cands := []string{
-		os.Getenv("PM_PDF_FONT"),
-		`C:\Windows\Fonts\simhei.ttf`,
-		`C:\Windows\Fonts\msyh.ttf`,
-		`C:\Windows\Fonts\simkai.ttf`,
-		"/usr/share/fonts/truetype/arphic/uming.ttc",
-		"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-		"/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-		"/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-		"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-	}
-	for _, c := range cands {
-		if c != "" && exists(c) {
-			return c
-		}
-	}
-	return ""
-}
-
 type pdfDoc struct {
 	*gopdf.GoPdf
-	fontPath string
-	pageW    float64
-	margin   float64
-	y        float64
+	pageW  float64
+	margin float64
+	y      float64
 }
 
-func newPDF(font string) (*pdfDoc, error) {
+// newPDF 用 fonts.Face 建立文档。字体字节可能是从 .ttc 中拆出来的，
+// 因此统一走 AddTTFFontData，而不是按路径加载。
+func newPDF(face *fonts.Face) (*pdfDoc, error) {
+	fontData, err := face.Bytes()
+	if err != nil {
+		return nil, err
+	}
 	p := &gopdf.GoPdf{}
 	p.Start(gopdf.Config{PageSize: *gopdf.PageSizeA4})
-	if err := p.AddTTFFont("cjk", font); err != nil {
+	if err := p.AddTTFFontData("cjk", fontData); err != nil {
 		return nil, err
 	}
 	p.SetMargins(40, 40, 40, 40)
 	p.AddPage()
-	d := &pdfDoc{GoPdf: p, fontPath: font, pageW: gopdf.PageSizeA4.W, margin: 40, y: 50}
+	d := &pdfDoc{GoPdf: p, pageW: gopdf.PageSizeA4.W, margin: 40, y: 50}
 	_ = d.SetFont("cjk", "", 10)
 	return d, nil
 }
@@ -492,12 +477,12 @@ func (s *Server) hExportPDF(w http.ResponseWriter, r *http.Request) {
 		s.exportAcceptancePDF(w, r, pid)
 		return
 	}
-	font := findCJKFont()
-	if font == "" {
-		writeErr(w, 501, "未找到可用中文字体，请设置环境变量 PM_PDF_FONT 指向 ttf 字体文件")
+	face, err := fonts.Find()
+	if err != nil {
+		writeErr(w, 501, "PDF 导出不可用："+err.Error())
 		return
 	}
-	d, err := newPDF(font)
+	d, err := newPDF(face)
 	if err != nil {
 		writeErr(w, 500, "PDF 字体加载失败: "+err.Error())
 		return
