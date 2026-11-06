@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 项目管理 · Linux / macOS（以及 Windows Git Bash 交叉编译）构建脚本
+# 项目管理 · Linux 构建脚本（支持交叉编译 amd64 / arm64）
 #
 # 用法：
 #   bash build.sh                                  # 按当前系统编译

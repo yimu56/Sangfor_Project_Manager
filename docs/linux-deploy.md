@@ -1,7 +1,7 @@
 # Linux 部署与运行
 
 本文面向把「项目管理」跑在 Linux（物理机 / 虚拟机 / 云主机 / NAS 容器）上的场景。
-Windows 用户看 README 的「快速开始 → Windows」即可。
+Windows 版本在 `main` 分支，本文件只讲 Linux。
 
 程序是**单个静态二进制**：前端已 `embed` 进去，SQLite 用纯 Go 实现（`CGO_ENABLED=0`），
 不依赖 Node、不需要安装数据库、不需要 C 编译器。
@@ -47,7 +47,7 @@ bash build.sh         # 生成 ./sangfor-pm
 GOOS=linux GOARCH=arm64 OUT=dist/sangfor-pm-linux-arm64 bash build.sh
 ```
 
-`build.sh` 已设置 `CGO_ENABLED=0`，可在 Windows 的 Git Bash 里直接交叉编译 Linux 版本。
+`build.sh` 已设置 `CGO_ENABLED=0`，可在任意平台交叉编译 Linux 版本（amd64 / arm64）。
 
 > 如果 `./build.sh` 提示 `Permission denied`，用 `bash build.sh`，或先
 > `chmod +x build.sh start.sh scripts/linux-smoke-test.sh`。
@@ -61,8 +61,7 @@ GOOS=linux GOARCH=arm64 OUT=dist/sangfor-pm-linux-arm64 bash build.sh
 
 | 方式 | 路径 |
 |---|---|
-| 默认（Linux / macOS） | `~/.sangfor-pm` |
-| 默认（Windows） | `%APPDATA%\SangforPM` |
+| 默认 | `~/.sangfor-pm` |
 | 命令行指定 | `-data /var/lib/sangfor-pm` |
 | 环境变量 | `PM_DATA_DIR=/var/lib/sangfor-pm` |
 
@@ -83,7 +82,7 @@ GOOS=linux GOARCH=arm64 OUT=dist/sangfor-pm-linux-arm64 bash build.sh
 会把上传分片目录指到 `<数据目录>/tmp`，避免上传 300MB 附件时先吃掉 300MB 内存。
 想用别的盘可自行 `export TMPDIR=/data/tmp`。
 
-**权限**：非 Windows 平台启动时会把数据目录权限收紧为 `0700`（库里有明文设备密码）。
+**权限**：启动时会把数据目录权限收紧为 `0700`（库里有明文设备密码）。
 如果多个运维账号需要访问，请用同一个系统用户运行，不要 `chmod 777`。
 
 **迁移**：停服务后整体拷贝目录即可；恢复同理。
@@ -268,13 +267,7 @@ docker run -d --name pm -p 8787:8787 \
 
 ---
 
-## 10. 与 Windows 版的差异
+## 10. 分支说明
 
-| 项 | Windows | Linux / macOS |
-|---|---|---|
-| 启动方式 | 双击 `项目管理.exe` / `启动.bat` | `./sangfor-pm` / `./start.sh` |
-| 默认数据目录 | `%APPDATA%\SangforPM` | `~/.sangfor-pm` |
-| 打开浏览器 | `rundll32` | `xdg-open` / `open`（无桌面自动跳过） |
-| 防火墙提示 | `netsh advfirewall` | `ufw` / `firewalld` |
-| 开机自启 | 启动文件夹 / 计划任务 | systemd（见 `deploy/`） |
-| 数据目录权限 | 继承 NTFS ACL | 启动时收紧为 `0700` |
+本分支（`For_Linux`）只包含 Linux 版本；Windows 版本在 `main` 分支。
+两者数据库结构一致，迁移时停服务后整体拷贝数据目录即可。

@@ -1,28 +1,51 @@
-# 项目管理 · 深信服实施交付工作台
+# 项目管理 · 深信服实施交付工作台（Linux）
 
 一个面向**个人实施交付**的本地项目管理工具，用来管住维保、加点、新实施、测试四类项目的全生命周期：
 项目进度、风险问题、附件版本、客户网络信息、设备档案，外加验收 / 维保到期 / 长期未更新三类提醒。
 
-BS 架构，Go 单二进制 + 内嵌前端，双击即用，数据全部留在本机。
+BS 架构，Go 单二进制 + 内嵌前端，一条命令启动，数据全部留在本机。
 
 ![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-pure--Go-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Platform](https://img.shields.io/badge/Windows%20%7C%20Linux-x64-555)
+![Platform](https://img.shields.io/badge/Linux-x64%20%7C%20arm64-555)
 
 ---
 
-## 为什么会有这个项目
+## 目录
 
-实施交付的日常痛点是「记录散、容易漏」：项目进展记在微信里、网络信息记在 Excel 里、设备密码记在备忘录里，
-到了月底复盘才发现某个维保早过期、某个项目两周没动、某个验收单找不到了。
+- [分支说明](#分支说明)
+- [功能特性](#功能特性)
+- [技术栈](#技术栈)
+- [快速开始（从 git clone 到跑起来）](#快速开始从-git-clone-到跑起来)
+  - [第 0 步：准备环境](#第-0-步准备环境)
+  - [第 1 步：克隆代码](#第-1-步克隆代码)
+  - [第 2 步：编译](#第-2-步编译)
+  - [第 3 步：启动](#第-3-步启动)
+  - [第 4 步：首次配置](#第-4-步首次配置)
+  - [第 5 步：验证与停止](#第-5-步验证与停止)
+- [服务器部署（systemd）](#服务器部署systemd)
+- [局域网访问](#局域网访问)
+- [升级、迁移与卸载](#升级迁移与卸载)
+- [数据与备份](#数据与备份)
+- [目录结构](#目录结构)
+- [数据模型](#数据模型)
+- [安全说明](#安全说明)
+- [已知限制与 Roadmap](#已知限制与-roadmap)
+- [常见问题](#常见问题)
+- [许可](#许可)
 
-这个工具只解决四件事：
+---
 
-1. **项目记录不散乱** —— 一个项目一处，附件、进度、问题、设备、网络全挂在一起。
-2. **随手就能记** —— 有进展才记一条，不要求每天打卡；记录可跨阶段多选。
-3. **不漏事** —— 维保 60 天到期、验收前 3 天、7 天没更新、14 天没结束，首页一眼看到。
-4. **可复用可追溯** —— 客户网络信息按版本走、设备改动用快照、附件改一次留一版，加点 / 转维保直接继承。
+## 分支说明
+
+| 分支 | 内容 |
+|---|---|
+| `For_Linux` | **Linux 版本（本分支）**：Linux 构建脚本、中文字体修复、systemd 部署与文档 |
+| `main` | Windows 版本 |
+
+两个分支的数据库结构与数据目录格式一致，停服务后整体拷贝数据目录即可互迁。
+本 README 只写 Linux 用法，Windows 用法见 `main` 分支。
 
 ---
 
@@ -74,7 +97,7 @@ BS 架构，Go 单二进制 + 内嵌前端，双击即用，数据全部留在�
 | 层 | 选型 | 说明 |
 |---|---|---|
 | 后端 | Go 1.26 + `net/http` 标准库路由 | 无 web 框架，路由用 `ServeMux` 的 method + 通配符模式 |
-| 存储 | SQLite（`modernc.org/sqlite`） | **纯 Go 实现，`CGO_ENABLED=0`**，Windows / Linux 同一份代码交叉编译 |
+| 存储 | SQLite（`modernc.org/sqlite`） | **纯 Go 实现，`CGO_ENABLED=0`**，不需要 C 编译器，可交叉编译 amd64 / arm64 |
 | 前端 | 原生 JS + 手写 CSS | 无构建步骤、无 npm 依赖，`embed` 打进二进制 |
 | Excel | `github.com/xuri/excelize/v2` | 多 sheet、表头样式、冻结窗格、自动筛选 |
 | PDF | `github.com/signintech/gopdf` | 运行时探测系统中文字体（会把 `.ttc` 拆成单字体、校验 cmap 覆盖中文），输出 Type0 / Identity-H + 内嵌 FontFile2 |
@@ -84,86 +107,290 @@ BS 架构，Go 单二进制 + 内嵌前端，双击即用，数据全部留在�
 
 ---
 
-## 快速开始
+## 快速开始（从 git clone 到跑起来）
 
-### 前置要求
+> 已经拿到现成的 `sangfor-pm` 单文件？可以跳过第 0～2 步，直接看 [第 3 步：启动](#第-3-步启动)。
+> 仓库不提交编译产物，正常流程是 clone 后自己编译，大约 3～5 分钟。
 
-- Go **1.26+**（`go.mod` 声明 `go 1.26.0`）
-- 无需 Node、无需 CGO、无需安装数据库
+### 第 0 步：准备环境
 
-### Windows
-
-```bat
-:: 方式一：一键编译（生成 项目管理.exe）
-双击 build.bat
-
-:: 方式二：双击已有程序启动
-双击 启动.bat    或    项目管理.exe
-```
-
-启动后浏览器会自动打开 `http://127.0.0.1:8787`，控制台同时打印本机地址与局域网地址。
-
-> 仓库出于体积考虑不提交 `.exe`（见 `.gitignore`），首次使用请先运行 `build.bat`。
-
-### Linux / macOS
-
-要求 Go **1.26+**；全程 `CGO_ENABLED=0`，不需要 C 编译器、不需要 Node。
+只需要两样东西：**Git** 和 **Go 1.26+**。不需要 Node、不需要 C 编译器、不需要单独安装数据库。
 
 ```bash
-bash build.sh                                   # 生成 ./sangfor-pm（按当前系统/架构）
-bash start.sh                                   # 没编译会先编译；无桌面自动加 -no-open
-./sangfor-pm                                    # 桌面环境：自动打开浏览器
-./sangfor-pm -no-open -host 0.0.0.0 -port 8787  # 服务器：不开浏览器
+# Debian / Ubuntu
+sudo apt update && sudo apt install -y git
+
+# CentOS / RHEL / Fedora
+sudo dnf install -y git
 ```
 
-服务器部署（systemd、防火墙、中文字体、时区、冒烟测试）见 **[docs/linux-deploy.md](docs/linux-deploy.md)**。
-已在 Debian 13 x86_64（systemd）实测：PDF 中文导出、附件下载、含附件备份、优雅退出均通过。
+确认架构（决定下载哪个 Go 包）：
 
-交叉编译到其他架构：
+```bash
+uname -m
+# x86_64  -> amd64
+# aarch64 -> arm64
+```
+
+安装 Go（**不要用发行版仓库的 `golang` 包**，版本通常低于 1.26）：
+
+```bash
+# 以 x86_64 为例；arm64 把包名里的 amd64 换成 arm64
+wget https://go.dev/dl/go1.26.5.linux-amd64.tar.gz   # 版本以 https://go.dev/dl/ 的最新 1.26.x 为准
+sudo rm -rf /usr/local/go
+sudo tar -C /usr/local -xzf go1.26.5.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+source ~/.bashrc
+```
+
+验证：
+
+```bash
+git --version
+go version        # 需要 >= go1.26，例如 go version go1.26.5 linux/amd64
+```
+
+> 国内网络拉取 Go 模块可能较慢，可先设置代理（可选）：
+> `go env -w GOPROXY=https://goproxy.cn,direct`
+
+### 第 1 步：克隆代码
+
+**必须指定 `For_Linux` 分支**，默认的 `main` 是 Windows 版：
+
+```bash
+git clone -b For_Linux https://github.com/yimu56/Sangfor_Project_Manager.git
+cd Sangfor_Project_Manager
+git branch --show-current      # 应输出 For_Linux
+```
+
+只想拿最新一份、不关心历史，可以加 `--depth 1` 加速：
+
+```bash
+git clone -b For_Linux --depth 1 https://github.com/yimu56/Sangfor_Project_Manager.git
+```
+
+已经 clone 过、当前在 `main` 的，切分支即可：
+
+```bash
+git fetch origin
+git checkout For_Linux
+```
+
+> 克隆很慢或卡在 `TLS handshake`：检查网络 / 代理，或直接在 GitHub 页面切到 `For_Linux` 分支后
+> **Code → Download ZIP**，解压进入目录，后续步骤完全一样。
+
+目录里应该能看到 `main.go`、`go.mod`、`build.sh`、`start.sh`、`deploy/`、`web/` 等文件。
+
+### 第 2 步：编译
+
+编译会生成**一个二进制**，前端已经打包在里面，之后运行不需要 Go 和源文件。
+
+```bash
+bash build.sh
+```
+
+产物：当前目录下的 `sangfor-pm`。
+
+等价手动命令：
+
+```bash
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o sangfor-pm .
+```
+
+交叉编译到 ARM 服务器（在 x86 机器上也可执行）：
 
 ```bash
 GOOS=linux GOARCH=arm64 OUT=dist/sangfor-pm-linux-arm64 bash build.sh
 ```
 
-> `./build.sh` 提示 `Permission denied` 时用 `bash build.sh`；
-> 提示 `$'\r': command not found` 说明文件被转成了 CRLF，执行 `sed -i 's/\r$//' build.sh`。
+编译成功会看到类似输出：
 
-### 命令行参数
+```
+==> 使用 go1.26.5
+==> 编译 linux/amd64 -> sangfor-pm
+==> 完成：/home/you/Sangfor_Project_Manager/sangfor-pm（16613538 字节）
+```
 
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `-host` | `0.0.0.0` | 监听地址。`0.0.0.0` 允许局域网访问，`127.0.0.1` 仅本机 |
-| `-port` | `8787` | 端口被占用时自动向后顺延，最多尝试 20 个 |
-| `-no-open` | `false` | 启动后不自动打开浏览器（适合服务器 / 开机自启） |
-| `-data` | 空 | 指定数据目录；留空用默认目录。优先级高于 `PM_DATA_DIR` |
+> 常见编译问题：
+> - `go: command not found`：Go 没装好或 PATH 没生效，重开终端 / 检查 `echo $PATH`。
+> - `Permission denied`：用 `bash build.sh`，或 `chmod +x build.sh`。
+> - `$'\r': command not found`：脚本被转成了 CRLF，执行 `sed -i 's/\r$//' build.sh`。
 
-### 首次使用
+### 第 3 步：启动
 
-1. 打开页面 → 设置管理员**用户名 + 密码**（密码至少 6 位）
-2. 先建**客户** → 加联系人 → 录一版网络信息、设备档案
-3. 再建**项目**（选客户、类型、产品线），阶段模板自动生成
-4. 有进展就去「进度记录」记一条；有问题就在项目里提一条
+```bash
+./sangfor-pm
+```
+
+如果提示 `Permission denied`：`chmod +x sangfor-pm`。
+
+服务器 / 无桌面环境（不自动拉浏览器，允许局域网访问）：
+
+```bash
+./sangfor-pm -no-open -host 0.0.0.0 -port 8787
+```
+
+也可以直接用启动脚本（没编译会先编译，无桌面会自动加 `-no-open`）：
+
+```bash
+bash start.sh
+```
+
+启动后控制台会打印实际地址和数据目录，例如：
+
+```
+==================================================
+  项目管理 · 深信服实施交付个人工作台  v1.0.0
+  平台: linux/amd64
+==================================================
+数据目录: /root/.sangfor-pm
+数据库  : /root/.sangfor-pm/data.db
+临时目录: /root/.sangfor-pm/tmp
+本机访问: http://127.0.0.1:8787
+局域网访问（其他主机可用）:
+    http://192.168.1.20:8787
+--------------------------------------------------
+```
+
+- 浏览器一般会自动打开 `http://127.0.0.1:8787`；没打开就手动访问。
+- 默认端口是 `8787`，被占用时会自动顺延（8788、8789…），**以控制台打印的地址为准**。
+- 数据目录默认在 `~/.sangfor-pm`，第一次启动时自动创建。
+- 停止服务：按 `Ctrl+C`，会看到「正在停止服务… / 服务已停止。」。
+
+> 想把数据放到指定目录（服务器推荐）：
+> `./sangfor-pm -data /var/lib/sangfor-pm`
+> 详见 [数据与备份](#数据与备份) 和 [docs/linux-deploy.md](docs/linux-deploy.md)。
+
+### 第 4 步：首次配置
+
+浏览器打开后，按下面顺序点一遍就能开始用了（全程不需要改配置文件）：
+
+1. **初始化管理员**
+   首次访问会显示「初始化系统」页面：填用户名（至少 2 位）和密码（至少 6 位）。
+   账号只保存在本机数据库里，忘记密码可在登录页重置（见 [常见问题](#常见问题)）。
+2. **建客户**
+   左侧「客户档案 → 新建客户」，填客户名称（编号选填）。
+   进入客户详情后可以继续补：
+   - 联系人（姓名必填，电话 / 邮箱 / 角色选填）
+   - 网络信息版本（对接人、网关、IP 规划、VLAN、DNS、账号密码、带宽、拓扑说明……保存后自动生成版本和字段级变更记录）
+   - 设备档案（型号、序列号、账号密码、拓扑图、网络信息）
+3. **建项目**
+   左侧「项目管理 → 新建项目」，选择客户、类型（新实施 / 加点 / 测试 / 维保）、状态、优先级、开始日期，按需添加产品线 / 具体产品。
+   保存后会自动带出该类型的阶段模板，项目详情里可以改阶段状态、上传附件、记进度、提问题。
+4. **记一条进度**
+   项目详情 →「进度记录 → 新增进度」，填日期、当前进展、下一步计划（可关联多个阶段和附件）。
+   首页看板会取最新一条的「下一步计划」。
+5. **看一眼提醒**
+   「提醒中心 → 立即扫描」，按维保 60 天 / 7 天未更新 / 验收前 3 天 / 14 天未结束生成提醒。
+6. **改设置（可选）**
+   「系统 / 备份」里可以改软件名称、提醒阈值、单个附件上限，以及配置自动备份。
+
+到此为止就可以正常使用了。日常操作只有两步：**有进展就记一条进度，有问题就提一条风险问题**。
+
+### 第 5 步：验证与停止
+
+验证服务是否正常（浏览器打开也行）：
+
+```bash
+curl http://127.0.0.1:8787/api/state
+# {"data":{"app_name":"项目管理","initialized":true,"subtitle":"...","version":"1.0.0"}}
+```
+
+停止：
+
+- 前台运行：`Ctrl+C`（会优雅退出并关闭数据库）。
+- systemd 托管：`sudo systemctl stop sangfor-pm`，见[服务器部署](#服务器部署systemd)。
+- 不要直接 `kill -9`，虽然 SQLite 有 WAL 能恢复，但没必要冒险。
+
+端到端自检（用临时数据目录，不碰你的正式数据）：
+
+```bash
+bash scripts/linux-smoke-test.sh ./sangfor-pm
+```
+
+它会依次验证：启动 → 初始化 → 建客户 → 建项目 → Excel 导出 → PDF 导出，结束后自动清理。
+
+---
+
+## 服务器部署（systemd）
+
+完整步骤（防火墙、字体、时区、排错）见 **[docs/linux-deploy.md](docs/linux-deploy.md)**。最小流程：
+
+```bash
+# 1. 建运行账号与目录
+sudo useradd --system --home /var/lib/sangfor-pm --shell /usr/sbin/nologin sangfor
+sudo mkdir -p /opt/sangfor-pm /var/lib/sangfor-pm
+
+# 2. 放二进制并安装 unit
+sudo install -m 0755 sangfor-pm /opt/sangfor-pm/sangfor-pm
+sudo cp deploy/sangfor-pm.service /etc/systemd/system/
+sudo chown -R sangfor:sangfor /var/lib/sangfor-pm
+
+# 3. 启动
+sudo systemctl daemon-reload
+sudo systemctl enable --now sangfor-pm
+systemctl status sangfor-pm
+curl -s http://127.0.0.1:8787/api/state
+```
+
+unit 里已经配置了 `-data /var/lib/sangfor-pm`、`TZ=Asia/Shanghai`、`UMask=0077` 以及基础加固。
+升级只需停服务、替换 `/opt/sangfor-pm/sangfor-pm`、再启动。
 
 ---
 
 ## 局域网访问
 
-程序默认监听 `0.0.0.0`，同一网段的其他主机可直接用控制台打印的地址访问。
+程序默认监听 `0.0.0.0`，同一网段的其他主机用控制台打印的地址即可访问。
 
-其他主机打不开，通常是防火墙拦了入站：
+其他主机打不开，通常是防火墙拦了入站（端口按实际打印的改）：
 
-```bat
-:: 双击运行（自动请求管理员权限）
-允许局域网访问.bat
+```bash
+# ufw（Ubuntu / Debian）
+sudo ufw allow 8787/tcp
 
-:: 或手动执行
-netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=allow protocol=TCP localport=8787
+# firewalld（CentOS / RHEL / Fedora）
+sudo firewall-cmd --add-port=8787/tcp --permanent && sudo firewall-cmd --reload
 ```
 
-改了端口就把脚本里的 `PORT` 和上面命令的 `localport` 一起改掉。
-
 > ⚠️ 服务是 **HTTP 明文**，且附件与网络信息中的账号密码按需求明文存储。请只在**可信内网**开放，
-> 公共网络下建议用 `-host 127.0.0.1` 收回本机。
+> 公共网络下建议用 `-host 127.0.0.1` 收回本机，或放在 HTTPS 反向代理之后。
+
+---
+
+## 升级、迁移与卸载
+
+### 升级
+
+数据在数据目录里，升级只换二进制，**不会动数据**。仍建议先备份。
+
+```bash
+# 1. 停服务（Ctrl+C 或 systemctl stop）
+# 2. 拉新代码（当前分支应为 For_Linux）
+git pull
+# 3. 重新编译
+bash build.sh
+# 4. 重新启动
+./sangfor-pm
+```
+
+如果 `git pull` 提示本地有修改冲突（比如改过 README），先 `git stash` 再 pull，或先提交你的改动。
+
+### 迁移 / 换机
+
+1. 停掉旧机器上的服务；
+2. 把整个数据目录拷贝到新机器（`data.db`、`files/`、`backups/`、`tmp/` 都要）；
+3. 新机器上编译 / 拷贝二进制，用 `-data` 指向新目录启动；
+4. 把目录所有者改成运行服务的用户：`sudo chown -R sangfor:sangfor <数据目录>`。
+
+SQLite 使用 WAL 模式，**请在停服务后拷贝**，不要在运行中直接 cp 单个 `data.db`。
+
+### 卸载
+
+1. 停服务；
+2. 删除二进制（`sangfor-pm`）和 systemd unit；
+3. 确认不再需要数据后，删除数据目录（`~/.sangfor-pm` 或你 `-data` 指定的目录）。
+
+删除数据目录等于清空所有客户 / 项目 / 附件，操作前先备份。
 
 ---
 
@@ -171,24 +398,27 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 
 ### 数据目录（系统固定，界面不可改）
 
-| 系统 | 路径 |
+| 方式 | 路径 |
 |---|---|
-| Windows | `%APPDATA%\SangforPM` |
-| Linux / macOS | `~/.sangfor-pm` |
+| 默认 | `~/.sangfor-pm` |
 | 命令行覆盖 | `-data /var/lib/sangfor-pm` |
 | 环境变量覆盖 | `PM_DATA_DIR` |
 
-> 非 Windows 平台启动时会把数据目录权限收紧为 `0700`（库内含明文设备密码）。
+优先级：`-data` > `PM_DATA_DIR` > 默认目录。
+
+> 启动时会把数据目录权限收紧为 `0700`（库内含明文设备密码）。
 > 服务器建议 `-data /var/lib/sangfor-pm` 并由 systemd 托管，见 [docs/linux-deploy.md](docs/linux-deploy.md)。
 
 ```
 <数据目录>/
 ├─ data.db          SQLite 主库（WAL 模式）
 ├─ files/           附件、拓扑图等原始文件
-└─ backups/         自动备份 zip
+├─ backups/         自动备份 zip
+├─ tmp/             上传分片临时目录（启动时清理 24h 前残留）
+└─ RESET_TOKEN.txt  仅在生成密码重置令牌时出现
 ```
 
-**迁移 / 换机**：直接拷贝整个目录即可，数据库与附件都在里面。
+**迁移 / 换机**：停服务后直接拷贝整个目录即可，数据库与附件都在里面。
 
 ### 本地自动备份
 
@@ -196,6 +426,8 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 - 频率：每 N 小时 / 天 / 周 / 月；保留份数可设，超出自动清理最旧的
 - 后台每分钟检查一次是否到达下次备份时间
 - 也可在「系统 / 备份」页手动「立即备份」并下载 zip
+
+备份 zip 的结构：`data.db` + `files/...` + `backup-info.txt`，恢复时解压覆盖数据目录即可（先停服务）。
 
 ### 云端 S3
 
@@ -209,14 +441,14 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 ```
 .
 ├─ main.go                      启动入口：数据目录、端口顺延、局域网地址、优雅退出、自动开浏览器
-├─ build.sh                     Linux / macOS / 交叉编译脚本（CGO_ENABLED=0）
+├─ build.sh                     Linux 构建脚本（CGO_ENABLED=0，支持交叉编译）
 ├─ start.sh                     一键启动（无二进制先编译；无桌面自动 -no-open）
 ├─ internal/
 │  ├─ store/
 │  │  ├─ schema.go              25 张表的建表 SQL（幂等）
 │  │  └─ db.go                  连接、数据目录、种子数据、通用 CRUD（白名单列，防注入）
 │  ├─ auth/auth.go              PBKDF2 口令哈希 + 内存会话 + 重置令牌
-│  ├─ fonts/                    跨平台中文字体查找 + TTC 拆包 + cmap 中文校验
+│  ├─ fonts/                    中文字体查找 + TTC 拆包 + cmap 中文校验
 │  └─ httpapi/
 │     ├─ server.go              路由表、中间件、登录限流
 │     ├─ handlers_auth.go       初始化 / 登录 / 改密 / 重置 / 系统设置
@@ -226,7 +458,7 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 │     ├─ handlers_dashboard.go  看板、提醒引擎、全局搜索、元数据
 │     ├─ handlers_export.go     Excel 六表 + PDF 四模板
 │     └─ handlers_backup.go     zip 备份、清理、定时调度、批量改状态
-├─ deploy/sangfor-pm.service    systemd unit 模板（Linux）
+├─ deploy/sangfor-pm.service    systemd unit 模板
 ├─ docs/linux-deploy.md         Linux 部署 / 字体 / systemd / 防火墙 / 排错
 ├─ scripts/linux-smoke-test.sh  Linux 冒烟测试（临时数据目录，跑完整流程）
 └─ web/                         内嵌前端（无构建）
@@ -278,7 +510,9 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 
 ---
 
-## 已知限制
+## 已知限制与 Roadmap
+
+**已知限制**
 
 - 云端 S3 备份未实现（仅配置项）
 - 备份只产出 zip，**没有一键恢复**（恢复 = 解压后替换数据目录）
@@ -287,7 +521,7 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 - 无日历视图（按需求第一版不做）
 - SQLite 单连接串行写入，多端同时操作会排队（个人使用场景足够）
 
-## Roadmap
+**Roadmap**
 
 - [ ] 备份一键恢复（选 zip → 校验 → 回滚）
 - [ ] S3 备份落地（附件 + 数据库快照）
@@ -299,16 +533,27 @@ netsh advfirewall firewall add rule name="项目管理-PM8787" dir=in action=all
 
 ## 常见问题
 
-**双击没反应 / 被杀软拦了**
-单文件 exe 容易被误判，加白名单即可。也可命令行运行看报错：`项目管理.exe -no-open`。
+**`go: command not found` / `go.mod requires go >= 1.26.0`**
+Go 没装或版本过低。按[第 0 步](#第-0-步准备环境)安装/升级 Go，**重开终端**后再 `go version` 确认。
+
+**编译报 `Permission denied` / `$'\r': command not found`**
+用 `bash build.sh` 而不是 `./build.sh`；CRLF 问题执行 `sed -i 's/\r$//' build.sh`。
+仓库已通过 `.gitattributes` 固定 `*.sh` 为 LF，正常 clone 不会出现。
+
+**`git clone` 很慢 / `TLS handshake` 失败**
+换网络或代理；Go 模块慢可以设 `GOPROXY=https://goproxy.cn,direct`。
+也可以直接在 GitHub 切到 `For_Linux` 分支下载 ZIP。
 
 **提示端口被占用**
 程序会自动顺延端口，控制台看实际地址；也可 `-port 9000` 指定。
 
-**其他主机打不开**
-先确认控制台打印的局域网地址与自己的网段一致，再放行防火墙（见上文）。虚拟机 / VPN 网卡的地址通常不可用。
+**浏览器没有自动打开**
+服务器 / 容器里没有桌面环境，属于正常；手动访问控制台打印的地址，或启动时加 `-no-open` 避免尝试。
 
-**导出 PDF 报「未找到可用中文字体」（Linux）**
+**其他主机打不开**
+先确认控制台打印的局域网地址与自己的网段一致，再放行防火墙（见[局域网访问](#局域网访问)）。虚拟机 / VPN / Docker 网卡的地址通常不可用。
+
+**导出 PDF 报「未找到可用中文字体」**
 PDF 库只支持 **TrueType（glyf）** 字体。`.ttc` 会被自动拆成单字体后加载，
 但 **Noto Sans CJK / 思源黑体的 `.ttc` / `.otf` 是 CFF 轮廓，不能用于本项目的 PDF 导出**。
 推荐安装（任选其一）：
@@ -323,11 +568,23 @@ PM_PDF_FONT=/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc ./sangfor-pm
 程序会解析 cmap 校验字体确实包含「中」「文」，不会误选 DejaVu 这类无中文字形的字体；
 选中的字体路径会打印在日志里。详见 [docs/linux-deploy.md](docs/linux-deploy.md#6-中文字体pdf-导出必需)。
 
-Windows 下优先使用 `simhei.ttf` / `msyh.ttc`，通常无需配置。
-
 **忘记密码**
 登录页「忘记密码」→ 在**运行服务的本机**生成令牌 → 输入令牌与新密码。
-也可直接看数据目录里的 `RESET_TOKEN.txt`。
+也可直接看数据目录里的 `RESET_TOKEN.txt`。注意令牌 30 分钟过期，且只能在服务所在机器上生成。
+
+**提示「打开数据库失败」/ 数据目录不可写**
+检查 `-data` 指定的目录权限、磁盘空间；目录应为运行用户所有（`chown -R`）。
+SELinux 环境执行 `restorecon -Rv <数据目录>`。
+
+**时间 / 周报日期不对**
+服务器时区常是 UTC。启动前设置 `TZ=Asia/Shanghai`，systemd 里写 `Environment=TZ=Asia/Shanghai`。
+
+**上传大附件时内存暴涨 / `/tmp` 满**
+程序默认把上传分片放到 `<数据目录>/tmp`，不会写 `/tmp`；如果手动设了 `TMPDIR` 就按你的设置走。
+确认数据盘空间足够（单个附件上限 300MB）。
+
+**把数据库放到 NFS / 共享盘后异常**
+SQLite WAL 不建议放在网络文件系统上，请使用本地磁盘。
 
 **想清空重来**
 关掉服务，删除数据目录下的 `data.db*` 与 `files/`，重启后会重新引导初始化。
